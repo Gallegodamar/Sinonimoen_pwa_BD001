@@ -87,7 +87,7 @@ const App: React.FC = () => {
     }
   }, [numPlayers, status]);
 
-  // Search Logic
+  // Search Logic - Fixed to ensure results show up when searching words OR synonyms
   useEffect(() => {
     const performSearch = async () => {
       if (!searchTerm || searchTerm.length < 2) {
@@ -95,11 +95,14 @@ const App: React.FC = () => {
         return;
       }
       setIsSearching(true);
-      const { data, error } = await supabase
-        .from("syn_words")
-        .select("source_id, hitza, sinonimoak, level")
-        .or(`hitza.ilike.%${searchTerm}%,sinonimoak.cs.{"${searchTerm}"}`)
-        .limit(30);
+      
+      // We use a more direct approach to query both hitza and the text representation of sinonimoak
+         const { data, error } = await supabase
+          .from("syn_words")
+          .select("source_id, hitza, sinonimoak, level, part")
+          .ilike("search_text", `%${searchTerm.toLowerCase()}%`)
+          .eq("active", true)
+          .limit(100);
 
       if (!error && data) {
         setSearchResults(data.map((r: any) => ({
@@ -108,11 +111,13 @@ const App: React.FC = () => {
           sinonimoak: Array.isArray(r.sinonimoak) ? r.sinonimoak : [],
           level: r.level
         })));
+      } else if (error) {
+        console.error("Search error:", error);
       }
       setIsSearching(false);
     };
 
-    const timer = setTimeout(performSearch, 300);
+    const timer = setTimeout(performSearch, 400);
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
@@ -377,7 +382,7 @@ const App: React.FC = () => {
               <div className="relative mb-6 shrink-0">
                 <input 
                   type="text" 
-                  placeholder="Idatzi hitz bat bilatzeko..." 
+                  placeholder="Hitz bat edo sinonimo bat bilatu..." 
                   value={searchTerm} 
                   onChange={e => setSearchTerm(e.target.value)} 
                   className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 font-bold text-indigo-950 placeholder-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
@@ -395,7 +400,7 @@ const App: React.FC = () => {
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                     </svg>
-                    <p className="font-black text-xs uppercase tracking-widest text-center">Idatzi gutxienez bi hizki<br/>hitzak bilatzeko</p>
+                    <p className="font-black text-xs uppercase tracking-widest text-center">Idatzi gutxienez bi hizki<br/>hitzak edo sinonimoak bilatzeko</p>
                   </div>
                 ) : searchResults.length === 0 ? (
                   <div className="text-center py-10">
@@ -420,7 +425,7 @@ const App: React.FC = () => {
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {word.sinonimoak.map((s, si) => (
-                          <span key={si} className="bg-white px-3 py-1 rounded-xl border border-slate-100 text-[11px] font-bold text-slate-600">{s}</span>
+                          <span key={si} className={`bg-white px-3 py-1 rounded-xl border text-[11px] font-bold ${s.toLowerCase().includes(searchTerm.toLowerCase()) ? 'text-indigo-600 border-indigo-200 bg-indigo-50' : 'text-slate-600 border-slate-100'}`}>{s}</span>
                         ))}
                       </div>
                     </div>
@@ -454,18 +459,18 @@ const App: React.FC = () => {
                                <div className="flex items-center gap-3">
                                  <div className="flex flex-col items-end">
                                    <div className="flex gap-2 text-xs font-black">
-                                     <span className="text-emerald-600">✓ {item.correct}</span>
-                                     <span className="text-rose-500">✕ {item.wrong}</span>
+                                     <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md">Asmatuak: {item.correct}</span>
+                                     <span className="text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded-md">Hutsak: {item.wrong}</span>
                                    </div>
-                                   <span className="text-[9px] font-black text-indigo-400">{perc}% Asmatua</span>
+                                   <span className="text-[9px] font-black text-indigo-600 uppercase mt-1">Emaitza: {perc}%</span>
                                  </div>
                                  <div className="h-8 w-px bg-slate-200"></div>
                                  <span className="text-xs font-black text-slate-500">{item.time_seconds.toFixed(0)}s</span>
                                </div>
                              </div>
-                             <div className="h-1 w-full bg-slate-200 rounded-full overflow-hidden flex">
-                               <div className="bg-emerald-500 h-full" style={{ width: `${perc}%` }} />
-                               <div className="bg-rose-500 h-full" style={{ width: `${100 - parseInt(perc)}%` }} />
+                             <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden flex">
+                               <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${perc}%` }} />
+                               <div className="bg-rose-500 h-full transition-all duration-1000" style={{ width: `${100 - parseInt(perc)}%` }} />
                              </div>
                            </div>
                          );
@@ -503,9 +508,9 @@ const App: React.FC = () => {
                                  <span className="text-xl font-black uppercase tracking-tighter">L{stat.level} Maila</span>
                                  <span className="text-[9px] font-black opacity-60 uppercase">{stat.sessions} Saio jokatuta</span>
                                </div>
-                               <div className="bg-white/80 px-3 py-2 rounded-xl border border-black/5 text-center">
-                                 <p className="text-[8px] font-black opacity-40 uppercase">Emaitza</p>
-                                 <p className="text-base font-black text-indigo-950">{stat.percentage.toFixed(1)}%</p>
+                               <div className="bg-white/80 px-4 py-2 rounded-2xl border border-black/5 text-center shadow-sm">
+                                 <p className="text-[8px] font-black opacity-40 uppercase">Asmatze %</p>
+                                 <p className="text-xl font-black text-indigo-950">{stat.percentage.toFixed(0)}%</p>
                                </div>
                              </div>
                              
@@ -524,9 +529,9 @@ const App: React.FC = () => {
                                </div>
                              </div>
 
-                             <div className="mt-4 h-1.5 w-full bg-black/5 rounded-full overflow-hidden flex">
-                               <div className="bg-emerald-500 h-full" style={{ width: `${stat.percentage}%` }} />
-                               <div className="bg-rose-500 h-full" style={{ width: `${100 - stat.percentage}%` }} />
+                             <div className="mt-4 h-2 w-full bg-black/5 rounded-full overflow-hidden flex">
+                               <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${stat.percentage}%` }} />
+                               <div className="bg-rose-500 h-full transition-all duration-1000" style={{ width: `${100 - stat.percentage}%` }} />
                              </div>
                            </div>
                          );
@@ -716,6 +721,14 @@ const App: React.FC = () => {
   }
 
   if (status === GameStatus.SUMMARY) {
+    // Determine if we show personal summary (logged in / solo) or ranking (multiplayer / guest)
+    const isSoloLoggedIn = user && players.length === 1;
+    const player = players[0];
+    const score = player.score;
+    const total = QUESTIONS_PER_PLAYER;
+    const wrong = total - score;
+    const percentage = (score / total) * 100;
+
     const sortedPlayers = [...players].filter(p => p.time > 0).sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
         return a.time - b.time;
@@ -725,35 +738,70 @@ const App: React.FC = () => {
       <div className="h-[100dvh] w-full flex flex-col items-center bg-indigo-950 overflow-hidden safe-pt safe-px">
         <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl p-6 md:p-10 flex flex-col h-full max-h-[92dvh] border-t-[12px] border-indigo-600 mt-2 mb-6">
           <div className="mb-8 shrink-0 text-center pt-2">
-            <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter">Sailkapena</h2>
+            <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter">
+              {isSoloLoggedIn ? "Zure Emaitzak" : "Sailkapena"}
+            </h2>
             <p className="text-xs font-black text-indigo-400 uppercase tracking-[0.3em] mt-2">{difficulty}. Maila</p>
           </div>
           
           <div className="grow overflow-hidden rounded-[2rem] border border-slate-200 shadow-inner bg-slate-50/50 mb-8 flex flex-col">
-            <div className="overflow-y-auto custom-scrollbar grow p-2">
-              <table className="w-full text-left border-collapse">
-                <thead className="sticky top-0 bg-slate-100 z-10">
-                  <tr>
-                    <th className="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">#</th>
-                    <th className="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Nor</th>
-                    <th className="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Pts</th>
-                    <th className="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">S.</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {sortedPlayers.map((p, idx) => (
-                    <tr key={p.id} className={idx === 0 ? "bg-amber-50" : ""}>
-                      <td className="px-5 py-5 font-black text-2xl">{idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `${idx + 1}.`}</td>
-                      <td className="px-5 py-5 font-black text-slate-800 text-sm uppercase">{p.name}</td>
-                      <td className="px-5 py-5 text-center">
-                        <span className="bg-indigo-600 text-white px-3 py-1 rounded-xl font-black text-xs shadow-sm">{p.score}</span>
-                      </td>
-                      <td className="px-5 py-5 text-right font-mono text-slate-500 text-xs">{p.time.toFixed(1)}s</td>
+            {isSoloLoggedIn ? (
+              /* PERSONAL SUMMARY DASHBOARD */
+              <div className="grow flex flex-col items-center justify-center p-6 space-y-6 overflow-y-auto custom-scrollbar">
+                <div className="relative w-40 h-40 flex items-center justify-center">
+                   <svg className="w-full h-full -rotate-90">
+                     <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-200" />
+                     <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="12" fill="transparent" strokeDasharray={440} strokeDashoffset={440 - (440 * percentage) / 100} strokeLinecap="round" className="text-indigo-600 transition-all duration-1000" />
+                   </svg>
+                   <div className="absolute flex flex-col items-center">
+                     <span className="text-4xl font-black text-indigo-950">{percentage}%</span>
+                     <span className="text-[10px] font-black text-slate-400 uppercase">Zuzentasuna</span>
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 w-full max-w-sm">
+                  <div className="bg-white p-5 rounded-3xl border border-emerald-100 shadow-sm text-center">
+                    <p className="text-[10px] font-black text-emerald-400 uppercase mb-1">Asmatuak</p>
+                    <p className="text-3xl font-black text-emerald-600">{score}</p>
+                  </div>
+                  <div className="bg-white p-5 rounded-3xl border border-rose-100 shadow-sm text-center">
+                    <p className="text-[10px] font-black text-rose-400 uppercase mb-1">Hutsak</p>
+                    <p className="text-3xl font-black text-rose-600">{wrong}</p>
+                  </div>
+                  <div className="bg-white p-5 rounded-3xl border border-indigo-100 shadow-sm text-center col-span-2">
+                    <p className="text-[10px] font-black text-indigo-400 uppercase mb-1">Denbora Totala</p>
+                    <p className="text-3xl font-black text-indigo-950">{player.time.toFixed(1)}s</p>
+                    <p className="text-[8px] font-bold text-slate-300 uppercase mt-1">Huts bakoitzeko +10s-ko zigorra barne</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* MULTIPLAYER RANKING TABLE */
+              <div className="overflow-y-auto custom-scrollbar grow p-2">
+                <table className="w-full text-left border-collapse">
+                  <thead className="sticky top-0 bg-slate-100 z-10">
+                    <tr>
+                      <th className="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">#</th>
+                      <th className="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Nor</th>
+                      <th className="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Pts</th>
+                      <th className="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">S.</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {sortedPlayers.map((p, idx) => (
+                      <tr key={p.id} className={idx === 0 ? "bg-amber-50" : ""}>
+                        <td className="px-5 py-5 font-black text-2xl">{idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `${idx + 1}.`}</td>
+                        <td className="px-5 py-5 font-black text-slate-800 text-sm uppercase">{p.name}</td>
+                        <td className="px-5 py-5 text-center">
+                          <span className="bg-indigo-600 text-white px-3 py-1 rounded-xl font-black text-xs shadow-sm">{p.score}</span>
+                        </td>
+                        <td className="px-5 py-5 text-right font-mono text-slate-500 text-xs">{p.time.toFixed(1)}s</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-3 shrink-0 pb-2 mb-4">
